@@ -1,0 +1,55 @@
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+config.local.js
+
+# API keys and credentials
+.api_keys
+credentials.json
+oauth_token.json
+
+# Dependencies
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Build artifacts
+dist/
+build/
+*.pyc
+__pycache__/
+
+# Editor and IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-*
+.DS_Store
+
+# OS files
+Thumbs.db
+.~*
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+
+# CSV uploads (local data)
+*.csv
+!README.md
+
+# Browser cache
+.cache/
+
+# Logs
+*.log
+logs/
+
+# Keep these in repo:
+# - index.html (the tool)
+# - config.js (template, no secrets)
+# - README.md (documentation)
+# - .gitignore (this file)

@@ -1,0 +1,37 @@
+{
+  "name": "kindly-cost-review",
+  "version": "1.1.0",
+  "description": "Monthly supplier cost price review tool for Kindly of Brighton",
+  "main": "index.html",
+  "scripts": {
+    "dev": "python3 -m http.server 8000",
+    "deploy": "git push origin main",
+    "build": "python3 build/build_tool.py"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/kindly-cost-review.git"
+  },
+  "keywords": [
+    "epos",
+    "inventory",
+    "supplier",
+    "cost-review",
+    "kindly",
+    "brighton"
+  ],
+  "author": "Kindly of Brighton",
+  "license": "PROPRIETARY",
+  "homepage": "https://kindly-cost-review.vercel.app",
+  "vercel": {
+    "functions": {
+      "api/**/*.js": {
+        "memory": 1024,
+        "maxDuration": 60
+      }
+    }
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
