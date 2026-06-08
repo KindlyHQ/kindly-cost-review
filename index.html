@@ -490,7 +490,8 @@
       const alt = c.alternative || {};
       const altSupplier = alt.alt_sup || alt.supplier || '?';
       const altCode = alt.alt_code || '';
-      const altCost = alt.alt_cost || c.cat_cost || 0;
+      const altCostRaw = alt.alt_cost || c.cat_cost || 0;
+      const altCost = altCostRaw * 0.90;
       
       let m = '<div class="modal-field">';
       m += '<label>Product</label>';
@@ -525,6 +526,7 @@
       DEC[MODAL_PID] = 'approved';
       SUPPLIER_CHANGE[MODAL_PID] = document.getElementById('m-supplier').value;
       CODE_CHANGE[MODAL_PID] = document.getElementById('m-code').value;
+      CODE_CHANGE[MODAL_PID + '_COST'] = document.getElementById('m-cost').value;
       saveDec();
       renderCheap('all');
       closeModal();
@@ -702,9 +704,10 @@
         // Build row in exact column order, preserving ALL existing data
         const row = EPOS_COLS.map(col => csvCell(epos[col]));
         
-        // Override Cost Price with new catalogue cost
+        // Override Cost Price with new catalogue cost (or custom cost from modal)
         const costIdx = EPOS_COLS.indexOf('Cost Price');
-        row[costIdx] = Number(c.cat_cost || 0).toFixed(4);
+        const customCost = CODE_CHANGE[pid + '_COST'];
+        row[costIdx] = customCost ? Number(customCost).toFixed(4) : Number(c.cat_cost || 0).toFixed(4);
         
         // For supplier switches, also update Supplier and OrderCode
         if(SUPPLIER_CHANGE[pid]) {
