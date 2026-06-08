@@ -287,6 +287,7 @@
             </select>
           </div>
           <span class="counter" id="flags-count">Showing: 260</span>
+          <button id="disc-download-btn" onclick="downloadDiscCSV()" style="display:none;padding:6px 14px;background:#7c3aed;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;margin-left:8px">&#11015; Download DISC CSV (Not in Catalogue)</button>
         </div>
         
         <div id="flags-table"></div>
@@ -520,8 +521,8 @@
         if(!c) return;
         const alt = c.alternative || {};
         const altSupplier = alt.alt_sup || alt.supplier || '?';
-        const altCostRaw = Number(alt.alt_cost || 0);
-        const altCost = (altSupplier === 'Suma' || altSupplier === 'Infinity') ? (altCostRaw * 0.90) : altCostRaw;
+        // alt_cost is already the final unit cost (post-discount where applicable)
+        const altCost = Number(alt.alt_cost || 0);
         DEC[pid] = 'approved';
         SUPPLIER_CHANGE[pid] = altSupplier;
         CODE_CHANGE[pid] = alt.alt_code || '';
@@ -539,9 +540,9 @@
       const alt = c.alternative || {};
       const altSupplier = alt.alt_sup || alt.supplier || '?';
       const altCode = alt.alt_code || '';
-      const altCostRaw = alt.alt_cost || c.cat_cost || 0;
-      // Apply 0.90 discount only for Suma and Infinity, not for CLF
-      const altCost = (altSupplier === 'Suma' || altSupplier === 'Infinity') ? (altCostRaw * 0.90) : altCostRaw;
+      // alt_cost is already the final unit cost (post-discount where applicable)
+      // No re-application of discount needed here
+      const altCost = Number(alt.alt_cost || c.cat_cost || 0);
       
       let m = '<div class="modal-field">';
       m += '<label>Product</label>';
@@ -592,7 +593,7 @@
     function filterSpecial(st) { renderSpecial(); }
     
     // Render special pricing
-    // Fix 5: use correct field names (cat_rsp, cost_diff_pct), add supplier+code, add diff filter
+    // Render special pricing
     function renderSpecial() {
       const st = (document.getElementById('spec-status-filter') || {value:'all'}).value || 'all';
       const diffFilter = (document.getElementById('spec-diff-filter') || {value:'all'}).value || 'all';
@@ -605,42 +606,93 @@
       else if(diffFilter === 'negative') f = f.filter(c => Number(c.sell_price||0) < Number(c.cat_rsp||0));
       
       document.getElementById('spec-count').textContent = 'Showing: ' + f.length;
+
+      // Bulk toolbar
+      let h = '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;margin-bottom:8px;border-bottom:1px solid #e5e7eb;flex-wrap:wrap">';
+      h += '<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;user-select:none">';
+      h += '<input type="checkbox" id="spec-select-all" onchange="toggleAllSpec(this.checked)" style="width:16px;height:16px;cursor:pointer"> <strong>Select All</strong></label>';
+      h += '<button id="spec-bulk-btn" onclick="bulkApproveSpec()" style="display:none;padding:6px 16px;background:#059669;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">&#10003; Acknowledge Selected (<span id="spec-bulk-count">0</span>)</button>';
+      h += '</div>';
       
-      let h = '<table style="font-size:13px"><tr>';
-      h += '<th>Product</th><th>Supplier</th><th>Code</th>';
-      h += '<th>Our Sell Price</th><th>Catalogue RRP</th><th>Difference</th><th>Note</th><th>Action</th></tr>';
+      h += '<div style="overflow-x:auto"><table style="font-size:13px;min-width:1100px"><tr>';
+      h += '<th style="width:28px"></th><th>Product</th><th>Supplier</th><th>Code</th>';
+      h += '<th>Sell Price</th><th>Cost (EPOS)</th><th>Margin Now</th>';
+      h += '<th>Cat RRP</th><th>Cat Cost</th><th>Margin (Cat)</th>';
+      h += '<th>RRP Diff</th><th>Note</th><th>Action</th></tr>';
       f.forEach(c => {
         const d = DEC[c.pid];
+        const isApproved = d === 'approved';
         const sellPrice = Number(c.sell_price || 0);
-        const catRRP = Number(c.cat_rsp || 0);
+        const eposCost  = Number(c.epos_cost || 0);
+        const catRRP    = Number(c.cat_rsp || 0);
+        const catCost   = Number(c.cat_cost || 0);
+        const supplier  = c.current_supplier || c.supplier_raw || '?';
+        const code      = c.order_code || c.supplier_code || '?';
+
+        const marginNow = (sellPrice > 0 && eposCost > 0) ? ((sellPrice - eposCost) / sellPrice * 100) : null;
+        const marginCat = (catRRP > 0 && catCost > 0) ? ((catRRP - catCost) / catRRP * 100) : null;
+
+        const fmtMargin = (m) => {
+          if(m === null) return '<span style="color:#bbb">?</span>';
+          const col = m >= 40 ? '#059669' : m >= 25 ? '#f59e0b' : '#dc2626';
+          return '<strong style="color:' + col + '">' + m.toFixed(1) + '%</strong>';
+        };
+
         const diffPct = catRRP > 0 ? ((sellPrice - catRRP) / catRRP * 100) : null;
         const diffStr = diffPct !== null ? (diffPct > 0 ? '+' : '') + diffPct.toFixed(1) + '%' : '?';
         const diffColor = diffPct === null ? '#999' : diffPct > 0 ? '#059669' : '#dc2626';
-        const supplier = c.current_supplier || c.supplier_raw || '?';
-        const code = c.order_code || c.supplier_code || '?';
         
-        h += '<tr class="' + (d==='approved'?'app':'') + '">';
+        h += '<tr class="' + (isApproved ? 'app' : '') + '">';
+        h += '<td style="text-align:center"><input type="checkbox" class="spec-row-cb" data-pid="' + c.pid + '" ' + (isApproved ? 'disabled' : 'onchange="updateSpecBulkCount()"') + ' style="width:15px;height:15px;cursor:' + (isApproved ? 'default' : 'pointer') + '"></td>';
         h += '<td><strong>' + c.name + '</strong></td>';
         h += '<td>' + supplier + '</td>';
         h += '<td><code>' + code + '</code></td>';
         h += '<td>£' + sellPrice.toFixed(2) + '</td>';
+        h += '<td>£' + (eposCost > 0 ? eposCost.toFixed(2) : '?') + '</td>';
+        h += '<td>' + fmtMargin(marginNow) + '</td>';
         h += '<td>£' + (catRRP > 0 ? catRRP.toFixed(2) : '?') + '</td>';
+        h += '<td>£' + (catCost > 0 ? catCost.toFixed(2) : '?') + '</td>';
+        h += '<td>' + fmtMargin(marginCat) + '</td>';
         h += '<td><strong style="color:' + diffColor + '">' + diffStr + '</strong></td>';
-        h += '<td class="text-sm" style="max-width:220px">' + (c.special_price_note || c.reason || '') + '</td>';
-        h += '<td><button class="decision-btn ' + (d==='approved'?'a':'') + '" onclick="decideSpec(\'' + c.pid + '\')" title="Acknowledge">✓</button></td>';
+        h += '<td class="text-sm" style="max-width:160px">' + (c.special_price_note || c.reason || '') + '</td>';
+        h += '<td><button class="decision-btn ' + (isApproved ? 'a' : '') + '" onclick="decideSpec(\'' + c.pid + '\')" title="Acknowledge">&#10003;</button></td>';
         h += '</tr>';
       });
-      h += '</table>';
+      h += '</table></div>';
       document.getElementById('special-table').innerHTML = h;
     }
+
+    function toggleAllSpec(checked) {
+      document.querySelectorAll('.spec-row-cb:not([disabled])').forEach(cb => { cb.checked = checked; });
+      updateSpecBulkCount();
+    }
+
+    function updateSpecBulkCount() {
+      const checked = document.querySelectorAll('.spec-row-cb:checked').length;
+      const total = document.querySelectorAll('.spec-row-cb:not([disabled])').length;
+      const btn = document.getElementById('spec-bulk-btn');
+      const countEl = document.getElementById('spec-bulk-count');
+      const selectAll = document.getElementById('spec-select-all');
+      if(countEl) countEl.textContent = checked;
+      if(btn) btn.style.display = checked > 0 ? 'block' : 'none';
+      if(selectAll) selectAll.indeterminate = checked > 0 && checked < total;
+    }
+
+    function bulkApproveSpec() {
+      const checked = document.querySelectorAll('.spec-row-cb:checked');
+      if(checked.length === 0) return;
+      if(!confirm('Acknowledge ' + checked.length + ' special pricing items? Marks them as reviewed.')) return;
+      checked.forEach(cb => { DEC[cb.dataset.pid] = 'approved'; });
+      saveDec();
+      renderSpecial();
+    }
     
-        // Decide special
+    // Decide special
     function decideSpec(pid) {
       DEC[pid] = DEC[pid] === 'approved' ? undefined : 'approved';
       saveDec();
       renderSpecial('all');
     }
-    
     // Filter flags
     function filterFlags() { renderFlags(); }
     
@@ -698,6 +750,53 @@
       });
       h += '</table>';
       document.getElementById('flags-table').innerHTML = h;
+
+      // Show/hide DISC download button based on not_in_catalogue items
+      const discCount = FLAGS.filter(x => x.flag === 'not_in_catalogue').length;
+      const discBtn = document.getElementById('disc-download-btn');
+      if(discBtn) discBtn.style.display = discCount > 0 ? 'inline-block' : 'none';
+    }
+
+    function downloadDiscCSV() {
+      const notInCat = FLAGS.filter(x => x.flag === 'not_in_catalogue');
+      if(!notInCat.length) { alert('No not-in-catalogue items found.'); return; }
+
+      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const d = new Date();
+      const monthName = months[d.getMonth()];
+      const discSupplier = 'DISC' + monthName;
+
+      function csvCell(val) {
+        if(val === null || val === undefined) return '';
+        const s = String(val);
+        if(s.includes(',') || s.includes('"') || s.includes('\n')) return '"' + s.replace(/"/g, '""') + '"';
+        return s;
+      }
+
+      const rows = [EPOS_COLS.join(',')];
+      const supIdx = EPOS_COLS.indexOf('Supplier');
+      const missingPids = [];
+
+      notInCat.forEach(item => {
+        const pid = String(item.pid);
+        const epos = EPOS_DATA[pid];
+        if(!epos) { missingPids.push(pid); return; }
+        const row = EPOS_COLS.map(col => csvCell(epos[col]));
+        if(supIdx >= 0) row[supIdx] = csvCell(discSupplier);
+        rows.push(row.join(','));
+      });
+
+      if(missingPids.length) console.warn('DISC export: no EPOS data for PIDs:', missingPids);
+
+      const csv = '\uFEFF' + rows.join('\r\n');
+      const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'kindly_disc_' + monthName + d.getFullYear() + '.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+      alert('Downloaded ' + rows.length - 1 + ' products with Supplier set to "' + discSupplier + '".');
     }
     
         // Render export
