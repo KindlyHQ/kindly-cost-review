@@ -435,9 +435,17 @@
       if(supFilter !== 'all') f = f.filter(c => (c.current_supplier || c.supplier_raw) === supFilter);
       
       document.getElementById('cheap-count').textContent = 'Showing: ' + f.length;
+
+      // Bulk action toolbar
+      let h = '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;margin-bottom:8px;border-bottom:1px solid #e5e7eb;flex-wrap:wrap">';
+      h += '<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;user-select:none">';
+      h += '<input type="checkbox" id="cheap-select-all" onchange="toggleAllCheap(this.checked)" style="width:16px;height:16px;cursor:pointer"> <strong>Select All</strong></label>';
+      h += '<button id="bulk-approve-btn" onclick="bulkApproveCheaper()" style="display:none;padding:6px 16px;background:#059669;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">&#10003; Bulk Approve Selected (<span id="bulk-count">0</span>)</button>';
+      h += '<span id="bulk-note" style="font-size:12px;color:#6b7280;display:none">Uses alternative catalogue cost directly. No individual modals.</span>';
+      h += '</div>';
       
-      let h = '<div style="overflow-x:auto"><table style="font-size:13px;min-width:900px">';
-      h += '<tr><th>Product</th><th>Current<br>Supplier</th><th>EPOS Cost<br><small>(before update)</small></th>';
+      h += '<div style="overflow-x:auto"><table style="font-size:13px;min-width:900px">';
+      h += '<tr><th style="width:28px"></th><th>Product</th><th>Current<br>Supplier</th><th>EPOS Cost<br><small>(before update)</small></th>';
       h += '<th style="background:#e8f4fd">CLF</th>';
       h += '<th style="background:#e8f8f0">Suma</th>';
       h += '<th style="background:#fef3e8">Infinity</th>';
@@ -453,6 +461,7 @@
         const currentSupplier = c.current_supplier || c.supplier_raw || '?';
         const saving = catCost - altCost;
         const prices = ALL_PRICES[String(c.pid)] || {};
+        const isApproved = d === 'approved';
         
         const fmtP = (sup) => {
           const p = prices[sup];
@@ -465,6 +474,7 @@
         };
         
         h += '<tr class="' + (d==='approved'?'app':d==='rejected'?'rej':'') + '">';
+        h += '<td style="text-align:center"><input type="checkbox" class="cheap-row-cb" data-pid="' + c.pid + '" ' + (isApproved ? 'disabled title="Already approved"' : 'onchange="updateBulkCount()"') + ' style="width:15px;height:15px;cursor:' + (isApproved ? 'default' : 'pointer') + '"></td>';
         h += '<td><strong>' + c.name + '</strong><br><small style="color:#888">' + c.order_code + '</small></td>';
         h += '<td>' + currentSupplier + '</td>';
         h += '<td>£' + eposCost.toFixed(2) + '</td>';
@@ -474,12 +484,51 @@
         h += '<td><strong>' + altSupplier + '</strong><br><small>' + (alt.alt_code||'') + '</small></td>';
         h += '<td><strong style="color:#059669">£' + saving.toFixed(2) + '</strong><br><small>(' + Number(alt.saving_pct||0).toFixed(1) + '% vs £' + catCost.toFixed(2) + ')</small></td>';
         h += '<td>';
-        h += '<button class="decision-btn ' + (d==='approved'?'a':'') + '" onclick="approveCheaper(\'' + c.pid + '\')" title="Approve">✓</button> ';
-        h += '<button class="decision-btn ' + (d==='rejected'?'r':'') + '" onclick="rejectCheaper(\'' + c.pid + '\')" title="Reject">✗</button>';
+        h += '<button class="decision-btn ' + (d==='approved'?'a':'') + '" onclick="approveCheaper(\'' + c.pid + '\')" title="Approve">&#10003;</button> ';
+        h += '<button class="decision-btn ' + (d==='rejected'?'r':'') + '" onclick="rejectCheaper(\'' + c.pid + '\')" title="Reject">&#10007;</button>';
         h += '</td></tr>';
       });
       h += '</table></div>';
       document.getElementById('cheap-table').innerHTML = h;
+    }
+
+    function toggleAllCheap(checked) {
+      document.querySelectorAll('.cheap-row-cb:not([disabled])').forEach(cb => { cb.checked = checked; });
+      updateBulkCount();
+    }
+
+    function updateBulkCount() {
+      const checked = document.querySelectorAll('.cheap-row-cb:checked').length;
+      const total = document.querySelectorAll('.cheap-row-cb:not([disabled])').length;
+      const btn = document.getElementById('bulk-approve-btn');
+      const note = document.getElementById('bulk-note');
+      const selectAll = document.getElementById('cheap-select-all');
+      const countEl = document.getElementById('bulk-count');
+      if(countEl) countEl.textContent = checked;
+      if(btn) btn.style.display = checked > 0 ? 'block' : 'none';
+      if(note) note.style.display = checked > 0 ? 'block' : 'none';
+      if(selectAll) selectAll.indeterminate = checked > 0 && checked < total;
+    }
+
+    function bulkApproveCheaper() {
+      const checked = document.querySelectorAll('.cheap-row-cb:checked');
+      if(checked.length === 0) return;
+      if(!confirm('Approve ' + checked.length + ' items? Each will use the alternative catalogue cost price directly.')) return;
+      checked.forEach(cb => {
+        const pid = cb.dataset.pid;
+        const c = CHANGES.find(x => x.pid === pid && x.category === 'cheaper_alt');
+        if(!c) return;
+        const alt = c.alternative || {};
+        const altSupplier = alt.alt_sup || alt.supplier || '?';
+        const altCostRaw = Number(alt.alt_cost || 0);
+        const altCost = (altSupplier === 'Suma' || altSupplier === 'Infinity') ? (altCostRaw * 0.90) : altCostRaw;
+        DEC[pid] = 'approved';
+        SUPPLIER_CHANGE[pid] = altSupplier;
+        CODE_CHANGE[pid] = alt.alt_code || '';
+        CODE_CHANGE[pid + '_COST'] = altCost.toFixed(4);
+      });
+      saveDec();
+      renderCheap();
     }
     
         // Approve cheaper - open modal
