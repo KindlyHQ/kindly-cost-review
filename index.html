@@ -491,7 +491,8 @@
       const altSupplier = alt.alt_sup || alt.supplier || '?';
       const altCode = alt.alt_code || '';
       const altCostRaw = alt.alt_cost || c.cat_cost || 0;
-      const altCost = altCostRaw * 0.90;
+      // Apply 0.90 discount only for Suma and Infinity, not for CLF
+      const altCost = (altSupplier === 'Suma' || altSupplier === 'Infinity') ? (altCostRaw * 0.90) : altCostRaw;
       
       let m = '<div class="modal-field">';
       m += '<label>Product</label>';
